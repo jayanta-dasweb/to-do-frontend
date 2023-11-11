@@ -1,11 +1,13 @@
 
 <script setup>
 import { Icon } from '@iconify/vue';
-import { FwbInput, FwbCard, FwbButton } from 'flowbite-vue'
-import {  reactive, computed, ref } from 'vue' 
-import { useVuelidate } from '@vuelidate/core'
-import { required, email, helpers, sameAs } from '@vuelidate/validators'
+import { FwbInput, FwbCard, FwbButton } from 'flowbite-vue';
+import { reactive, computed, ref } from 'vue'; 
+import { useVuelidate } from '@vuelidate/core';
+import { required, email, helpers, sameAs } from '@vuelidate/validators';
 import axios from 'axios';
+import { useApiAccessTokenStore } from '../../stores/apiAccessToken';
+import { useLoginUserObjStore } from '../../stores/loginUserObj';
 
 
 const formData = reactive({
@@ -17,7 +19,7 @@ const formData = reactive({
     }
 });
 
-const initialState = {
+const serverSideErrors = reactive({
     name: {
         error: ref(false),
         msg: ref(''),
@@ -34,13 +36,12 @@ const initialState = {
         error: ref(false),
         msg: ref(''),
     }
-};
+});
 
-const serverSideErrors = reactive({ ...initialState });
 
-let api_access_token = ref('');
-
-let login_user = reactive({});
+const loading = ref(false);
+const apiAccessTokenStore = useApiAccessTokenStore()
+const loginUserObjStore = useLoginUserObjStore()
 
 const validations = computed(() => {
     return {
@@ -61,13 +62,14 @@ const validations = computed(() => {
             }
         }
     }
-})
+}) 
 
 
 
 const v$ = useVuelidate(validations, formData);
 
 const handleFormSubmit = async () => {
+    loading.value = true;
     const validation_result = await v$.value.$validate();
     if (validation_result) {
         await axios.post(`http://127.0.0.1:8000/api/register`, {
@@ -76,11 +78,26 @@ const handleFormSubmit = async () => {
             password: formData.password.password,
             password_confirmation: formData.password.confirm
         }).then(response => {
-            Object.assign(serverSideErrors, initialState);
-            login_user = response.data.user
-            console.log(login_user.value)
-            api_access_token.value = response.data.token
-             console.log(response.data.token)
+            // reset server sider error state
+            serverSideErrors.name.error = false;
+            serverSideErrors.name.msg = ''
+
+            serverSideErrors.email.error = false;
+            serverSideErrors.email.msg = ''
+
+            serverSideErrors.password.error = false;
+            serverSideErrors.password.msg = ''
+
+            serverSideErrors.confirm.error = false;
+            serverSideErrors.confirm.msg = ''
+            
+            loginUserObjStore.loginUserObj = response.data.user
+            console.log(loginUserObjStore.loginUserObj)
+            const parts = response.data.token.split('|');
+            const extractedValue = parts[1];
+            apiAccessTokenStore.apiAccessToken = extractedValue
+            console.log(apiAccessTokenStore.apiAccessToken)
+            loading.value = false;
         }).catch(e => {
             if (e.response.data.errors) {
                 console.log(e.response.data.errors)
@@ -99,12 +116,12 @@ const handleFormSubmit = async () => {
                         serverSideErrors.password.msg = e.response.data.errors.password[0]
                     }
                 }
+                loading.value = false;
             }
         })
 
     } else {
-        console.log("error, form not submited!");
-
+        loading.value = false;
     }
 };
 
@@ -159,7 +176,9 @@ const handleFormSubmit = async () => {
                         {{ v$.password.confirm.$error ? v$.password.confirm.$errors[0].$message : serverSideErrors.confirm.msg }}
                     </template>
                 </fwb-input>
-                <fwb-button gradient="cyan-blue" type="submit" class="w-full mt-5">Submit</fwb-button>
+                <fwb-button :loading="loading" gradient="cyan-blue" size="lg" @click="loading = !loading" class="w-full mt-5">
+                    {{ loading ? 'Loading' : 'Submit' }}
+                </fwb-button>
                 <p class="text-sm font-light mt-2">
                     Already have an account? <router-link to="/" class="font-medium text-primary-600 hover:underline dark:text-blue-500">Login here</router-link>
                 </p>
